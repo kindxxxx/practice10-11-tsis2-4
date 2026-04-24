@@ -44,10 +44,13 @@ settings = load_settings()
 
 GRAPHICS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Graphics")
 
-def load_image(name):
+def load_image(name, colorkey=None):
     path = os.path.join(GRAPHICS_DIR, name)
     if os.path.exists(path):
-        return pygame.image.load(path).convert_alpha()
+        surf = pygame.image.load(path).convert_alpha()
+        if colorkey:
+            surf.set_colorkey(colorkey)
+        return surf
     else:
         # Fallback surface if image not found
         surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
@@ -71,6 +74,11 @@ body_tr = load_image('body_topright.png')
 body_tl = load_image('body_topleft.png')
 body_br = load_image('body_bottomright.png')
 body_bl = load_image('body_bottomleft.png')
+
+# Load effect icons with white transparency
+speed_icon = pygame.transform.scale(load_image('speed_icon.png', (255, 255, 255)), (40, 40))
+score_icon = pygame.transform.scale(load_image('score_icon.png', (255, 255, 255)), (40, 40))
+ghost_icon = pygame.transform.scale(load_image('ghost_icon.png', (255, 255, 255)), (40, 40))
 
 font_main = pygame.font.SysFont("Segoe UI", 36, bold=True)
 font_small = pygame.font.SysFont("Segoe UI", 24)
@@ -264,8 +272,8 @@ class MAIN:
     def update_speed(self):
         # Decrease timer interval (increase speed) based on the current level
         self.tick_delay = max(50, 150 - (self.level - 1) * 15)
-        if self.active_powerup_type == 0: # Speed powerup makes it 2x faster
-            self.tick_delay = self.tick_delay // 2
+        if self.active_powerup_type == 0: # Speed powerup makes it 1.35x faster
+            self.tick_delay = int(self.tick_delay / 1.35)
         pygame.time.set_timer(SCREEN_UPDATE, self.tick_delay)
 
     def generate_obstacles(self):
@@ -422,38 +430,35 @@ class MAIN:
         y_offset += 60
 
         # 2. Speed Effect
-        speed_val = 1.0
-        if self.active_powerup_type == 0: speed_val *= 2.0
-        # Speed also increases with level: base is 150ms, level increases it
-        # Actually tick_delay decreases. Let's just show relative speed.
-        base_speed = 150
-        current_speed_factor = base_speed / self.tick_delay
+        current_speed_factor = 150 / self.tick_delay
         
-        speed_icon_rect = pygame.Rect(GAME_WIDTH + 20, y_offset, 30, 30)
-        pygame.draw.ellipse(screen, (0, 0, 255), speed_icon_rect)
+        speed_icon_rect = pygame.Rect(GAME_WIDTH + 20, y_offset, 40, 40)
+        screen.blit(speed_icon, speed_icon_rect)
         speed_text = font_small.render(f"Speed: x{current_speed_factor:.1f}", True, (255, 255, 255))
-        screen.blit(speed_text, (GAME_WIDTH + 60, y_offset))
-        y_offset += 50
-
-        # 3. Multiplier Effect
-        mult_icon_rect = pygame.Rect(GAME_WIDTH + 20, y_offset, 30, 30)
-        pygame.draw.ellipse(screen, (255, 215, 0), mult_icon_rect)
-        mult_text = font_small.render(f"Score: x{self.multiplier}", True, (255, 255, 255))
-        screen.blit(mult_text, (GAME_WIDTH + 60, y_offset))
-        y_offset += 50
-
-        # 4. Ghost Mode
-        ghost_color = (0, 255, 0) if self.ghost_mode else (100, 100, 100)
-        ghost_icon_rect = pygame.Rect(GAME_WIDTH + 20, y_offset, 30, 30)
-        pygame.draw.ellipse(screen, (200, 200, 200), ghost_icon_rect)
-        ghost_text = font_small.render("Ghost Mode", True, ghost_color)
-        screen.blit(ghost_text, (GAME_WIDTH + 60, y_offset))
+        screen.blit(speed_text, (GAME_WIDTH + 70, y_offset + 5))
         y_offset += 60
 
-        # Timer for active powerup
+        # 3. Multiplier Effect
+        mult_icon_rect = pygame.Rect(GAME_WIDTH + 20, y_offset, 40, 40)
+        screen.blit(score_icon, mult_icon_rect)
+        mult_text = font_small.render(f"Score: x{self.multiplier}", True, (255, 255, 255))
+        screen.blit(mult_text, (GAME_WIDTH + 70, y_offset + 5))
+        y_offset += 60
+
+        # 4. Ghost Mode
+        ghost_icon_rect = pygame.Rect(GAME_WIDTH + 20, y_offset, 40, 40)
+        screen.blit(ghost_icon, ghost_icon_rect)
+        ghost_color = (0, 255, 100) if self.ghost_mode else (150, 150, 150)
+        ghost_text = font_small.render("Ghost Mode", True, ghost_color)
+        screen.blit(ghost_text, (GAME_WIDTH + 70, y_offset + 5))
+        y_offset += 70
+
+        # Active Powerup Countdown
         if self.active_powerup_type != -1:
             time_left = max(0, (self.powerup_end_time - pygame.time.get_ticks()) // 1000)
-            timer_text = font_small.render(f"Powerup: {time_left}s", True, (255, 100, 100))
+            timer_text = font_small.render(f"Active: {time_left}s", True, (255, 100, 100))
+            # Draw a small countdown circle
+            pygame.draw.arc(screen, (255, 100, 100), (GAME_WIDTH + SIDEBAR_WIDTH - 50, y_offset - 100, 30, 30), 0, (time_left/10) * 6.28, 3)
             screen.blit(timer_text, (GAME_WIDTH + 20, y_offset))
 
     def game_over(self):
@@ -532,9 +537,16 @@ class MAIN:
 
         # Volume control
         vol_label = font_small.render(f"Volume: {int(self.volume * 100)}%", True, COLOR_TEXT)
-        screen.blit(vol_label, (SCREEN_WIDTH//2 - vol_label.get_width()//2, 390))
-        self.btn_vol_down = self.draw_button("-", SCREEN_WIDTH//2 - 60, 430, w=50, h=40)
-        self.btn_vol_up = self.draw_button("+", SCREEN_WIDTH//2 + 60, 430, w=50, h=40)
+        screen.blit(vol_label, (SCREEN_WIDTH//2 - vol_label.get_width()//2, 380))
+        
+        # Volume bar
+        bar_x = SCREEN_WIDTH//2 - 100
+        bar_y = 420
+        pygame.draw.rect(screen, (200, 200, 200), (bar_x, bar_y, 200, 10), border_radius=5)
+        pygame.draw.rect(screen, COLOR_BUTTON, (bar_x, bar_y, int(self.volume * 200), 10), border_radius=5)
+        
+        self.btn_vol_down = self.draw_button("-", SCREEN_WIDTH//2 - 130, 405, w=40, h=40)
+        self.btn_vol_up = self.draw_button("+", SCREEN_WIDTH//2 + 130, 405, w=40, h=40)
         
         self.btn_back = self.draw_button("BACK", SCREEN_WIDTH//2, 600)
 
