@@ -246,6 +246,15 @@ class MAIN:
             print(f"Error loading music: {e}")
             
         self.reset_game()
+        
+        # Scene Dictionary mapping
+        self.scenes = {
+            "MENU": {"draw": self.draw_menu, "events": self.handle_menu_events},
+            "GAME": {"draw": self.draw_game_scene, "events": self.handle_game_events},
+            "GAME_OVER": {"draw": self.draw_game_over, "events": self.handle_game_over_events},
+            "LEADERBOARD": {"draw": self.draw_leaderboard, "events": self.handle_leaderboard_events},
+            "SETTINGS": {"draw": self.draw_settings, "events": self.handle_settings_events}
+        }
 
     def reset_game(self):
         # Reset all game variables for a new session
@@ -461,6 +470,92 @@ class MAIN:
             pygame.draw.arc(screen, (255, 100, 100), (GAME_WIDTH + SIDEBAR_WIDTH - 50, y_offset - 100, 30, 30), 0, (time_left/10) * 6.28, 3)
             screen.blit(timer_text, (GAME_WIDTH + 20, y_offset))
 
+    def draw_game_scene(self):
+        screen.fill(COLOR_BG)
+        self.draw_elements()
+
+    def handle_game_events(self, event):
+        if event.type == SCREEN_UPDATE:
+            self.direction_changed = False
+            self.update()
+        if event.type == pygame.KEYDOWN and not self.game_over_flag:
+            if not self.direction_changed:
+                if event.key == pygame.K_UP and self.snake.direction.y != 1:
+                    self.snake.direction = Vector2(0, -1)
+                    self.direction_changed = True
+                elif event.key == pygame.K_DOWN and self.snake.direction.y != -1:
+                    self.snake.direction = Vector2(0, 1)
+                    self.direction_changed = True
+                elif event.key == pygame.K_LEFT and self.snake.direction.x != 1:
+                    self.snake.direction = Vector2(-1, 0)
+                    self.direction_changed = True
+                elif event.key == pygame.K_RIGHT and self.snake.direction.x != -1:
+                    self.snake.direction = Vector2(1, 0)
+                    self.direction_changed = True
+
+    def handle_menu_events(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                self.username = self.username[:-1]
+            else:
+                if len(self.username) < 15 and event.unicode.isprintable():
+                    self.username += event.unicode
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.draw_button("START", SCREEN_WIDTH//2, 400).collidepoint(event.pos):
+                if self.username.strip() == "": self.username = "Guest"
+                try:
+                    self.personal_best = db.get_personal_best(self.username)
+                except:
+                    self.personal_best = 0
+                self.reset_game()
+                self.state = "GAME"
+            elif self.draw_button("LEADERBOARD", SCREEN_WIDTH//2, 470).collidepoint(event.pos):
+                self.state = "LEADERBOARD"
+            elif self.draw_button("SETTINGS", SCREEN_WIDTH//2, 540).collidepoint(event.pos):
+                self.state = "SETTINGS"
+
+    def handle_game_over_events(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.btn_menu.collidepoint(event.pos):
+                self.state = "MENU"
+            elif self.btn_restart.collidepoint(event.pos):
+                try:
+                    self.personal_best = db.get_personal_best(self.username)
+                except:
+                    self.personal_best = 0
+                self.reset_game()
+                self.state = "GAME"
+
+    def handle_leaderboard_events(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.btn_back.collidepoint(event.pos):
+                self.state = "MENU"
+
+    def handle_settings_events(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.btn_grid.collidepoint(event.pos):
+                settings["grid_visible"] = not settings.get("grid_visible", True)
+                save_settings(settings)
+            elif self.btn_sound.collidepoint(event.pos):
+                settings["sound_on"] = not settings.get("sound_on", True)
+                if settings["sound_on"]:
+                    pygame.mixer.music.play(-1)
+                else:
+                    pygame.mixer.music.stop()
+                save_settings(settings)
+            elif self.btn_vol_down.collidepoint(event.pos):
+                self.volume = max(0, self.volume - 0.1)
+                pygame.mixer.music.set_volume(self.volume)
+                settings["volume"] = self.volume
+                save_settings(settings)
+            elif self.btn_vol_up.collidepoint(event.pos):
+                self.volume = min(1.0, self.volume + 0.1)
+                pygame.mixer.music.set_volume(self.volume)
+                settings["volume"] = self.volume
+                save_settings(settings)
+            elif self.btn_back.collidepoint(event.pos):
+                self.state = "MENU"
+
     def game_over(self):
         self.game_over_flag = True
         self.state = "GAME_OVER"
@@ -555,104 +650,24 @@ class MAIN:
         big_font = pygame.font.SysFont("Segoe UI", 50, bold=True)
         
         while True:
+            # Handle Events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                    
-                if self.state == "GAME":
-                    if event.type == SCREEN_UPDATE:
-                        self.direction_changed = False
-                        self.update()
-                    if event.type == pygame.KEYDOWN and not self.game_over_flag:
-                        if not self.direction_changed:
-                            if event.key == pygame.K_UP and self.snake.direction.y != 1:
-                                self.snake.direction = Vector2(0, -1)
-                                self.direction_changed = True
-                            elif event.key == pygame.K_DOWN and self.snake.direction.y != -1:
-                                self.snake.direction = Vector2(0, 1)
-                                self.direction_changed = True
-                            elif event.key == pygame.K_LEFT and self.snake.direction.x != 1:
-                                self.snake.direction = Vector2(-1, 0)
-                                self.direction_changed = True
-                            elif event.key == pygame.K_RIGHT and self.snake.direction.x != -1:
-                                self.snake.direction = Vector2(1, 0)
-                                self.direction_changed = True
-                            
-                elif self.state == "MENU":
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_BACKSPACE:
-                            self.username = self.username[:-1]
-                        else:
-                            if len(self.username) < 15 and event.unicode.isprintable():
-                                self.username += event.unicode
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.draw_button("START", SCREEN_WIDTH//2, 400).collidepoint(event.pos):
-                            if self.username.strip() == "": self.username = "Guest"
-                            try:
-                                self.personal_best = db.get_personal_best(self.username)
-                            except:
-                                self.personal_best = 0
-                            self.reset_game()
-                            self.state = "GAME"
-                        elif self.draw_button("LEADERBOARD", SCREEN_WIDTH//2, 470).collidepoint(event.pos):
-                            self.state = "LEADERBOARD"
-                        elif self.draw_button("SETTINGS", SCREEN_WIDTH//2, 540).collidepoint(event.pos):
-                            self.state = "SETTINGS"
-                            
-                elif self.state == "GAME_OVER":
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.btn_menu.collidepoint(event.pos):
-                            self.state = "MENU"
-                        elif self.btn_restart.collidepoint(event.pos):
-                            try:
-                                self.personal_best = db.get_personal_best(self.username)
-                            except:
-                                self.personal_best = 0
-                            self.reset_game()
-                            self.state = "GAME"
-                            
-                elif self.state == "LEADERBOARD":
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.btn_back.collidepoint(event.pos):
-                            self.state = "MENU"
-                            
-                elif self.state == "SETTINGS":
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        if self.btn_grid.collidepoint(event.pos):
-                            settings["grid_visible"] = not settings.get("grid_visible", True)
-                            save_settings(settings)
-                        elif self.btn_sound.collidepoint(event.pos):
-                            settings["sound_on"] = not settings.get("sound_on", True)
-                            if settings["sound_on"]:
-                                pygame.mixer.music.play(-1)
-                            else:
-                                pygame.mixer.music.stop()
-                            save_settings(settings)
-                        elif self.btn_vol_down.collidepoint(event.pos):
-                            self.volume = max(0, self.volume - 0.1)
-                            pygame.mixer.music.set_volume(self.volume)
-                            settings["volume"] = self.volume
-                            save_settings(settings)
-                        elif self.btn_vol_up.collidepoint(event.pos):
-                            self.volume = min(1.0, self.volume + 0.1)
-                            pygame.mixer.music.set_volume(self.volume)
-                            settings["volume"] = self.volume
-                            save_settings(settings)
-                        elif self.btn_back.collidepoint(event.pos):
-                            self.state = "MENU"
+                
+                # Use Scene Dictionary for Event Handling
+                current_scene = self.scenes.get(self.state)
+                if current_scene:
+                    current_scene["events"](event)
 
-            if self.state == "GAME":
-                screen.fill(COLOR_BG)
-                self.draw_elements()
-            elif self.state == "MENU":
-                self.draw_menu()
-            elif self.state == "GAME_OVER":
-                self.draw_game_over()
-            elif self.state == "LEADERBOARD":
-                self.draw_leaderboard()
-            elif self.state == "SETTINGS":
-                self.draw_settings()
+            # Draw Scene
+            current_scene = self.scenes.get(self.state)
+            if current_scene:
+                current_scene["draw"]()
+                
+            pygame.display.update()
+            clock.tick(60)
                 
             pygame.display.update()
             clock.tick(60)
