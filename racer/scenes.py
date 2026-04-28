@@ -534,7 +534,20 @@ class SettingsScene(Scene):
         self.btn_back.center = (SCREEN_WIDTH // 2, 720)
 
         self.model_names = ["Sedan", "Sport", "Truck", "Compact", "Coupe"]
-        self.color_names = list(CAR_COLORS.keys())
+        self.available_colors = {}
+        for m in self.model_names:
+            path = os.path.join(GRAPHICS_DIR, m)
+            if os.path.exists(path):
+                # Extract color name from files like 'sedan_red.png'
+                colors = []
+                for f in os.listdir(path):
+                    if "_" in f and f.endswith(".png"):
+                        cname = f.split("_")[1].split(".")[0]
+                        colors.append(cname)
+                self.available_colors[m] = sorted(colors) if colors else ["red"]
+            else:
+                self.available_colors[m] = ["red"]
+        
         self.diff_names = ["easy", "medium", "hard"]
         self.hovered_item = None
 
@@ -545,16 +558,13 @@ class SettingsScene(Scene):
         """Return clickable areas."""
         rects = {}
         # Sound toggle
-        rects["sound"] = pygame.Rect(350, 120, 120, 40)
+        rects["sound"] = pygame.Rect(350, 150, 120, 40)
         # Car models
         for i, m in enumerate(self.model_names):
-            rects[f"model_{m}"] = pygame.Rect(140 + i * 85, 200, 80, 40)
-        # Car colors
-        for i, cn in enumerate(self.color_names):
-            rects[f"color_{cn}"] = pygame.Rect(140 + i * 52, 280, 44, 44)
+            rects[f"model_{m}"] = pygame.Rect(140 + i * 85, 250, 80, 40)
         # Difficulty
         for i, d in enumerate(self.diff_names):
-            rects[f"diff_{d}"] = pygame.Rect(140 + i * 140, 380, 120, 40)
+            rects[f"diff_{d}"] = pygame.Rect(140 + i * 140, 360, 120, 40)
         rects["back"] = self.btn_back
         return rects
 
@@ -571,10 +581,16 @@ class SettingsScene(Scene):
                 self.settings["sound"] = not self.settings["sound"]
             for m in self.model_names:
                 if rects[f"model_{m}"].collidepoint(pos):
-                    self.settings["car_model"] = m
-            for cn in self.color_names:
-                if rects[f"color_{cn}"].collidepoint(pos):
-                    self.settings["car_color"] = cn
+                    if self.settings["car_model"] == m:
+                        # Cycle color within same model
+                        clist = self.available_colors[m]
+                        curr_c = self.settings.get("car_color", clist[0])
+                        idx = (clist.index(curr_c) + 1) % len(clist) if curr_c in clist else 0
+                        self.settings["car_color"] = clist[idx]
+                    else:
+                        # Switch model, pick first color
+                        self.settings["car_model"] = m
+                        self.settings["car_color"] = self.available_colors[m][0]
             for d in self.diff_names:
                 if rects[f"diff_{d}"].collidepoint(pos):
                     self.settings["difficulty"] = d
@@ -595,7 +611,7 @@ class SettingsScene(Scene):
 
         # --- Sound ---
         lbl = self.font_label.render("Sound:", True, WHITE)
-        surface.blit(lbl, (140, 125))
+        surface.blit(lbl, (140, 155))
         r = rects["sound"]
         val = "ON" if self.settings["sound"] else "OFF"
         col = GREEN if self.settings["sound"] else RED
@@ -605,8 +621,8 @@ class SettingsScene(Scene):
         surface.blit(vtxt, (r.centerx - vtxt.get_width()//2, r.centery - vtxt.get_height()//2))
 
         # --- Car Model ---
-        lbl_model = self.font_label.render("Model:", True, WHITE)
-        surface.blit(lbl_model, (140, 175))
+        lbl_model = self.font_label.render("Model & Color (Click to cycle):", True, WHITE)
+        surface.blit(lbl_model, (140, 215))
         for m in self.model_names:
             r = rects[f"model_{m}"]
             active = self.settings["car_model"] == m
@@ -617,18 +633,9 @@ class SettingsScene(Scene):
             mtxt = self.font_val.render(m, True, WHITE if active else (140, 140, 160))
             surface.blit(mtxt, (r.centerx - mtxt.get_width()//2, r.centery - mtxt.get_height()//2))
 
-        # --- Car Color ---
-        lbl2 = self.font_label.render("Color:", True, WHITE)
-        surface.blit(lbl2, (140, 255))
-        for cn in self.color_names:
-            r = rects[f"color_{cn}"]
-            pygame.draw.rect(surface, CAR_COLORS[cn], r, border_radius=8)
-            if self.settings["car_color"] == cn:
-                pygame.draw.rect(surface, WHITE, r.inflate(6, 6), 3, border_radius=10)
-
         # --- Difficulty ---
         lbl3 = self.font_label.render("Difficulty:", True, WHITE)
-        surface.blit(lbl3, (140, 345))
+        surface.blit(lbl3, (140, 320))
         for d in self.diff_names:
             r = rects[f"diff_{d}"]
             active = self.settings["difficulty"] == d
@@ -641,7 +648,8 @@ class SettingsScene(Scene):
 
         # Preview car
         preview_model = self.settings["car_model"]
-        preview_path = os.path.join(GRAPHICS_DIR, preview_model, f"{preview_model.lower()}_{self.settings['car_color']}.png")
+        preview_color = self.settings.get("car_color", "red")
+        preview_path = os.path.join(GRAPHICS_DIR, preview_model, f"{preview_model.lower()}_{preview_color}.png")
         if not os.path.exists(preview_path):
             preview_path = os.path.join(GRAPHICS_DIR, "Sedan", "sedan_red.png")
         
@@ -657,8 +665,13 @@ class SettingsScene(Scene):
             
         car_surf = load_image(preview_path, (pw * 1.5, ph * 1.5))
         surface.blit(car_surf, (SCREEN_WIDTH//2 - car_surf.get_width()//2, 450))
+        
+        # Info text about selected car
+        info_txt = self.font_val.render(f"Model: {preview_model} | Color: {preview_color}", True, (200, 200, 220))
+        surface.blit(info_txt, (SCREEN_WIDTH//2 - info_txt.get_width()//2, 600))
+        
         prev_lbl = self.font_val.render("Preview", True, (140, 140, 160))
-        surface.blit(prev_lbl, (SCREEN_WIDTH//2 - prev_lbl.get_width()//2, 630))
+        surface.blit(prev_lbl, (SCREEN_WIDTH//2 - prev_lbl.get_width()//2, 625))
 
         draw_button(surface, self.btn_back, "SAVE & BACK", self.font_btn,
                     self.hovered_item == "back")

@@ -1,6 +1,6 @@
 {
-    "sound": true,
+    "sound": false,
     "car_model": "Truck",
-    "car_color": "green",
+    "car_color": "blue",
     "difficulty": "hard"
 }
